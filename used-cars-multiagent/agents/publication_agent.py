@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
+from groq import AsyncGroq
 
 from shared.event_bus import EventBus, PUBLISHED, new_event
 from shared.state import CarSaleState
@@ -27,11 +27,10 @@ Responde SIEMPRE en JSON con esta estructura:
 
 
 class PublicationAgent:
-    model = "gemini-2.5-flash"
-
-    def __init__(self, api_key: str, event_bus: EventBus) -> None:
-        self.api_key = api_key
+    def __init__(self, api_key: str, event_bus: EventBus, model: str = "llama-3.3-70b-versatile") -> None:
+        self.client = AsyncGroq(api_key=api_key)
         self.event_bus = event_bus
+        self.model = model
 
     async def generate_listing(self, state: CarSaleState) -> CarSaleState:
         user_content = json.dumps(
@@ -48,7 +47,7 @@ class PublicationAgent:
 
         for _ in range(3):
             try:
-                text = await self._call_gemini(system_prompt=SYSTEM_PROMPT, user_content=user_content)
+                text = await self._call_groq(system_prompt=SYSTEM_PROMPT, user_content=user_content)
                 parsed = self._parse_json(text)
                 break
             except Exception as e:
@@ -56,7 +55,7 @@ class PublicationAgent:
                 parsed = None
 
         if parsed is None:
-            state.publication_data = {"error": f"No se pudo obtener JSON válido del LLM: {last_error}"}
+            state.publication_data = {"error": f"No se pudo obtener JSON válido de Groq: {last_error}"}
             state.status = "published"
             return state
 
@@ -80,54 +79,29 @@ class PublicationAgent:
         self.event_bus.publish(new_event(PUBLISHED, payload={"state": state.model_dump()}, source_agent="publication"))
         return state
 
-    async def _call_gemini(self, system_prompt: str, user_content: str) -> str:
-        if not self.api_key:
-            raise ValueError("Falta GOOGLE_API_KEY (api_key) para llamar a Gemini")
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
-        payload = {
-            "system_instruction": {"parts": [{"text": system_prompt}]},
-            "contents": [{"role": "user", "parts": [{"text": user_content}]}],
-            "generationConfig": {
-                "temperature": 0.4,
-                "responseMimeType": "application/json",
-            },
-        }
-
-        headers = {
-            "x-goog-api-key": self.api_key,
-            "Content-Type": "application/json",
-        }
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(url, headers=headers, json=payload)
-            r.raise_for_status()
-            data = r.json()
-
-        candidates = data.get("candidates") or []
-        if not candidates:
-            raise ValueError(f"Respuesta vacía del modelo: {json.dumps(data, ensure_ascii=False)[:600]}")
-
-        content = candidates[0].get("content") or {}
-        parts = content.get("parts") or []
-        text_parts = [part.get("text", "") for part in parts if isinstance(part, dict)]
-        text = "\n".join(part for part in text_parts if part).strip()
-        if not text:
-            raise ValueError(f"No se encontró texto en la respuesta: {json.dumps(data, ensure_ascii=False)[:600]}")
-        return text
+    async def _call_groq(self, system_prompt: str, user_content: str) -> str:
+        completion = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.4,
+            response_format={"type": "json_object"},
+        )
+        return completion.choices[0].message.content
 
     def _parse_json(self, text: str) -> dict[str, Any]:
         text = text.strip()
         if text.startswith("```"):
             text = text.strip("`")
-            text = text.replace("json\n", "", 1).strip()
-        if not text:
-            raise ValueError("Respuesta vacía o no textual del modelo")
+            if text.startswith("json"):
+                text = text[4:].strip()
         try:
             return json.loads(text)
         except json.JSONDecodeError:
             start = text.find("{")
             end = text.rfind("}")
-            if start == -1 or end == -1 or end <= start:
-                raise
-            return json.loads(text[start : end + 1])
+            if start != -1 and end != -1 and end > start:
+                return json.loads(text[start : end + 1])
+            raise

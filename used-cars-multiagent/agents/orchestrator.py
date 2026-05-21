@@ -22,14 +22,14 @@ from shared.state import CarSaleState
 
 
 class Orchestrator:
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile") -> None:
         self.console = Console()
         self.event_bus = EventBus()
 
-        self.acquisition_agent = AcquisitionAgent(api_key=api_key, event_bus=self.event_bus)
-        self.publication_agent = PublicationAgent(api_key=api_key, event_bus=self.event_bus)
-        self.crm_chatbot_agent = CRMChatbotAgent(api_key=api_key, event_bus=self.event_bus)
-        self.sales_closing_agent = SalesClosingAgent(api_key=api_key, event_bus=self.event_bus)
+        self.acquisition_agent = AcquisitionAgent(api_key=api_key, event_bus=self.event_bus, model=model)
+        self.publication_agent = PublicationAgent(api_key=api_key, event_bus=self.event_bus, model=model)
+        self.crm_chatbot_agent = CRMChatbotAgent(api_key=api_key, event_bus=self.event_bus, model=model)
+        self.sales_closing_agent = SalesClosingAgent(api_key=api_key, event_bus=self.event_bus, model=model)
 
         self.event_bus.subscribe(CAR_ACQUIRED, self._on_car_acquired)
         self.event_bus.subscribe(PUBLISHED, self._on_published)
