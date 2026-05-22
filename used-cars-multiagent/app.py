@@ -831,7 +831,7 @@ with tab_dash:
                     )
                     fig1.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=300,
                                        showlegend=True, legend=dict(orientation="h"))
-                    st.plotly_chart(fig1, use_container_width=True)
+                    st.plotly_chart(fig1, width="stretch")
                 else:
                     st.caption("Configura los campos avanzados para ver el pipeline.")
 
@@ -848,7 +848,7 @@ with tab_dash:
                               color_continuous_scale=["#bfdbfe", "#1d4ed8"])
                 fig2.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=300,
                                    coloraxis_showscale=False, yaxis_title="", xaxis_title="Ganancia ($)")
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
 
             # Gráfica 3 — Autos encontrados por fecha
             st.markdown("**Autos encontrados por fecha**")
@@ -859,7 +859,7 @@ with tab_dash:
                                color_discrete_sequence=["#3b82f6"])
                 fig3.update_layout(margin=dict(t=10, b=10), height=240,
                                    xaxis_title="", yaxis_title="Autos encontrados")
-                st.plotly_chart(fig3, use_container_width=True)
+                st.plotly_chart(fig3, width="stretch")
 
             # Gráfica 4 — Ganancia real vs potencial (si hay datos)
             if "Ganancia Real" in df.columns and df["Ganancia Real"].notna().any():
@@ -872,7 +872,7 @@ with tab_dash:
                 fig4 = px.bar(df_melt, x="Título", y="Ganancia", color="Tipo", barmode="group",
                               color_discrete_map={"Ganancia Potencial": "#93c5fd", "Ganancia Real": "#10b981"})
                 fig4.update_layout(margin=dict(t=10, b=10), height=280, xaxis_title="")
-                st.plotly_chart(fig4, use_container_width=True)
+                st.plotly_chart(fig4, width="stretch")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 — CONFIGURACIÓN

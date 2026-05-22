@@ -1,11 +1,71 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import re
 import urllib.parse
 from typing import Any
 
 from playwright.async_api import async_playwright
+
+# ─── Anti-bot helpers ─────────────────────────────────────────────────────────
+
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+]
+
+_STEALTH_SCRIPT = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+Object.defineProperty(navigator, 'plugins',   { get: () => [1, 2, 3, 4, 5] });
+Object.defineProperty(navigator, 'languages', { get: () => ['es-PE', 'es', 'en-US'] });
+window.chrome = { runtime: {} };
+Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+"""
+
+_LAUNCH_ARGS = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-infobars",
+    "--disable-extensions",
+    "--disable-notifications",
+    "--lang=es-PE",
+]
+
+
+async def _human_delay(min_s: float = 0.8, max_s: float = 2.2) -> None:
+    await asyncio.sleep(random.uniform(min_s, max_s))
+
+
+async def _human_scroll(page, iterations: int = 4) -> None:
+    for _ in range(iterations):
+        amount = random.randint(500, 1600)
+        await page.evaluate(f"window.scrollBy(0, {amount})")
+        await _human_delay(0.7, 2.0)
+
+
+async def _new_stealth_context(p):
+    """Creates a Playwright browser + context with anti-detection settings."""
+    browser = await p.chromium.launch(headless=True, args=_LAUNCH_ARGS)
+    w = 1280 + random.randint(-60, 60)
+    h = 900  + random.randint(-40, 40)
+    context = await browser.new_context(
+        user_agent=random.choice(_USER_AGENTS),
+        viewport={"width": w, "height": h},
+        locale="es-PE",
+        timezone_id="America/Lima",
+        extra_http_headers={
+            "Accept-Language": "es-PE,es;q=0.9,en;q=0.5",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        },
+    )
+    await context.add_init_script(_STEALTH_SCRIPT)
+    return browser, context
 
 # ─── Currency detection ────────────────────────────────────────────────────────
 EXCHANGE_RATE_PEN_USD = 3.75   # S/ per $1 USD (approximate, Lima 2024-2025)
@@ -332,12 +392,11 @@ async def scrape_item_url(url: str) -> dict[str, Any] | None:
     """
     try:
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page    = await browser.new_page()
-            await page.set_viewport_size({"width": 1280, "height": 900})
+            browser, context = await _new_stealth_context(p)
+            page = await context.new_page()
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await page.wait_for_timeout(2000)
+                await _human_delay(1.5, 3.0)
 
                 # Title
                 title = ""
@@ -418,6 +477,7 @@ async def scrape_item_url(url: str) -> dict[str, Any] | None:
                     ),
                 }
             finally:
+                await context.close()
                 await browser.close()
     except Exception as e:
         print(f"[scrape_item_url] Error: {e}")
@@ -472,20 +532,17 @@ class FacebookScraper:
 
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
-                page    = await browser.new_page()
-                await page.set_viewport_size({"width": 1280, "height": 900})
+                browser, context = await _new_stealth_context(p)
+                page = await context.new_page()
 
                 url = self._build_url()
                 print(f"Scraping: {url}")
 
                 await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-                await page.wait_for_timeout(3000)
+                await _human_delay(2.5, 4.5)
 
-                # ── Scroll multiple times to load more listings ────────────────
-                for _ in range(3):
-                    await page.evaluate("window.scrollBy(0, 1500)")
-                    await page.wait_for_timeout(1500)
+                # ── Human-like scroll to load more listings ────────────────────
+                await _human_scroll(page, iterations=random.randint(3, 5))
 
                 # ── Collect listing links ──────────────────────────────────────
                 elements  = await page.locator('a[href*="/marketplace/item/"]').all()
@@ -526,14 +583,15 @@ class FacebookScraper:
                         continue
 
                     # ── Open item page for full details ───────────────────────
-                    item_page        = await browser.new_page()
+                    await _human_delay(0.5, 1.5)   # pause between card reads
+                    item_page        = await context.new_page()
                     full_description = ""
                     condition        = ""
                     structured       : dict[str, Any] = {}
 
                     try:
                         await item_page.goto(full_url, wait_until="domcontentloaded", timeout=30000)
-                        await item_page.wait_for_timeout(2000)
+                        await _human_delay(1.5, 3.0)
 
                         # Full description
                         desc_el = item_page.locator('div[dir="auto"]')
@@ -645,6 +703,7 @@ class FacebookScraper:
                         if currency_info["amount_original"] else f"  ✓ {title[:45]} | {price}"
                     )
 
+                await context.close()
                 await browser.close()
 
         except Exception as e:
