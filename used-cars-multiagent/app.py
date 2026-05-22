@@ -50,7 +50,7 @@ def _login_page():
         st.markdown("---")
         user = st.text_input("Usuario", placeholder="usuario")
         pwd  = st.text_input("Contraseña", type="password", placeholder="••••••••")
-        if st.button("Entrar", use_container_width=True, type="primary"):
+        if st.button("Entrar", type="primary", use_container_width=True):
             if user == _AUTH_USER and pwd == _AUTH_PASS:
                 st.session_state["_authenticated"] = True
                 st.rerun()
@@ -796,11 +796,22 @@ with tab_dash:
         else:
             df = pd.DataFrame(dash_cars)
 
+            # Normalise numeric columns — Airtable omits fields that are empty,
+            # so the column may not exist at all in the DataFrame.
+            for _col in ["Precio Mercado", "Precio Publicado", "Precio Venta Sugerido",
+                         "Precio Compra Real", "Precio Venta Real", "Ganancia Real"]:
+                if _col not in df.columns:
+                    df[_col] = 0
+                df[_col] = pd.to_numeric(df[_col], errors="coerce").fillna(0)
+            for _col in ["Título", "Pipeline", "Ciudad", "Fecha Análisis"]:
+                if _col not in df.columns:
+                    df[_col] = ""
+
             # KPIs
             total_d      = len(df)
             gan_pot_d    = sum(max((r.get("Precio Mercado") or 0) - (r.get("Precio Publicado") or 0), 0) for r in dash_cars)
-            gan_real_d   = df["Ganancia Real"].dropna().sum() if "Ganancia Real" in df.columns else 0
-            vendidos_d   = int((df["Pipeline"] == "Vendido").sum()) if "Pipeline" in df.columns else 0
+            gan_real_d   = df["Ganancia Real"].sum()
+            vendidos_d   = int((df["Pipeline"] == "Vendido").sum())
 
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Oportunidades encontradas", total_d)
@@ -815,25 +826,23 @@ with tab_dash:
             # Gráfica 1 — Estado del pipeline
             with ch1:
                 st.markdown("**Estado del pipeline**")
-                if "Pipeline" in df.columns:
-                    pipeline_counts = (
-                        df["Pipeline"].fillna("Encontrado").value_counts().reset_index()
-                    )
-                    pipeline_counts.columns = ["Estado", "Cantidad"]
-                    color_map = {
-                        "Encontrado": "#3b82f6", "Contactando": "#f59e0b",
-                        "Negociando": "#f97316", "Comprado": "#8b5cf6", "Vendido": "#10b981",
-                    }
-                    fig1 = px.pie(
-                        pipeline_counts, values="Cantidad", names="Estado",
-                        color="Estado", color_discrete_map=color_map,
-                        hole=0.4,
-                    )
-                    fig1.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=300,
-                                       showlegend=True, legend=dict(orientation="h"))
-                    st.plotly_chart(fig1, width="stretch")
-                else:
-                    st.caption("Configura los campos avanzados para ver el pipeline.")
+                pipeline_counts = (
+                    df["Pipeline"].replace("", "Encontrado").fillna("Encontrado")
+                    .value_counts().reset_index()
+                )
+                pipeline_counts.columns = ["Estado", "Cantidad"]
+                color_map = {
+                    "Encontrado": "#3b82f6", "Contactando": "#f59e0b",
+                    "Negociando": "#f97316", "Comprado": "#8b5cf6", "Vendido": "#10b981",
+                }
+                fig1 = px.pie(
+                    pipeline_counts, values="Cantidad", names="Estado",
+                    color="Estado", color_discrete_map=color_map,
+                    hole=0.4,
+                )
+                fig1.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=300,
+                                   showlegend=True, legend=dict(orientation="h"))
+                st.plotly_chart(fig1, width="stretch")
 
             # Gráfica 2 — Top 8 oportunidades por ganancia potencial
             with ch2:
@@ -851,9 +860,10 @@ with tab_dash:
                 st.plotly_chart(fig2, width="stretch")
 
             # Gráfica 3 — Autos encontrados por fecha
-            st.markdown("**Autos encontrados por fecha**")
-            if "Fecha Análisis" in df.columns:
-                by_date = (df["Fecha Análisis"].value_counts().sort_index().reset_index())
+            fecha_valid = df["Fecha Análisis"].replace("", pd.NA).dropna()
+            if not fecha_valid.empty:
+                st.markdown("**Autos encontrados por fecha**")
+                by_date = fecha_valid.value_counts().sort_index().reset_index()
                 by_date.columns = ["Fecha", "Cantidad"]
                 fig3 = px.area(by_date, x="Fecha", y="Cantidad",
                                color_discrete_sequence=["#3b82f6"])
@@ -862,9 +872,9 @@ with tab_dash:
                 st.plotly_chart(fig3, width="stretch")
 
             # Gráfica 4 — Ganancia real vs potencial (si hay datos)
-            if "Ganancia Real" in df.columns and df["Ganancia Real"].notna().any():
+            if (df["Ganancia Real"] > 0).any():
                 st.markdown("**Ganancia real vs potencial**")
-                df_cmp = df[df["Ganancia Real"].notna()][
+                df_cmp = df[df["Ganancia Real"] > 0][
                     ["Título", "Ganancia Potencial", "Ganancia Real"]
                 ].copy()
                 df_cmp["Título"] = df_cmp["Título"].str[:20] + "…"
