@@ -32,6 +32,35 @@ from tools.whatsapp_tool import WhatsAppTool
 
 load_dotenv()
 
+# ─── Auth ──────────────────────────────────────────────────────────────────────
+_AUTH_USER = os.getenv("APP_USER")
+_AUTH_PASS = os.getenv("APP_PASSWORD")
+
+def _check_auth() -> bool:
+    return st.session_state.get("_authenticated") is True
+
+def _login_page():
+    st.set_page_config(page_title="Anymotor — Login", page_icon="🔐", layout="centered")
+    col = st.columns([1, 2, 1])[1]
+    with col:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.image("https://img.icons8.com/emoji/96/automobile-emoji.png", width=80)
+        st.title("Anymotor")
+        st.markdown("##### Ingresa tus credenciales para continuar")
+        st.markdown("---")
+        user = st.text_input("Usuario", placeholder="usuario")
+        pwd  = st.text_input("Contraseña", type="password", placeholder="••••••••")
+        if st.button("Entrar", use_container_width=True, type="primary"):
+            if user == _AUTH_USER and pwd == _AUTH_PASS:
+                st.session_state["_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Usuario o contraseña incorrectos.")
+
+if not _check_auth():
+    _login_page()
+    st.stop()
+
 # ─── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Anymotor",
@@ -89,6 +118,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
+
+def _secret_input(label: str, current: str | None, key: str, hint: str = "") -> str:
+    """Password input that never pre-fills the actual value.
+    Shows 'Configurado' placeholder when a value already exists.
+    Returns the new value typed by the user, or "" if unchanged."""
+    ph = "✓ Configurado — escribe para reemplazar" if current else (hint or "Pega tu clave aquí")
+    return st.text_input(label, value="", type="password", placeholder=ph, key=key)
+
+
+def _cfg_status(current: str | None) -> None:
+    """Inline indicator: green check if configured, warning if missing."""
+    if current:
+        st.caption("🟢 Credencial guardada")
+    else:
+        st.caption("🔴 Sin configurar")
 PIPELINE_COLORS = {
     "Encontrado":  "#dbeafe",
     "Contactando": "#fef9c3",
@@ -176,6 +220,10 @@ st.markdown("""
 
 # ─── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
+    if st.button("🔒 Cerrar sesión", use_container_width=True):
+        st.session_state["_authenticated"] = False
+        st.rerun()
+    st.divider()
     st.markdown("#### ⚙️ Estado del sistema")
 
     def _dot(ok, label_ok, label_fail):
@@ -835,19 +883,24 @@ with tab_cfg:
 
     with st.expander("🤖 Inteligencia Artificial (Groq)", expanded=not bool(groq_key)):
         st.markdown("La IA analiza los autos y calcula si son buenas ofertas.")
-        new_groq = st.text_input("GROQ API Key", value=groq_key or "", type="password",
-                                 key="cfg_groq")
+        _cfg_status(groq_key)
+        new_groq = _secret_input("GROQ API Key", groq_key, "cfg_groq")
         if st.button("Guardar IA", key="save_groq"):
-            save_env("GROQ_API_KEY", new_groq)
-            st.toast("✅ Guardado. Recarga la página para aplicar.")
+            if new_groq:
+                save_env("GROQ_API_KEY", new_groq)
+                st.toast("✅ Guardado. Recarga la página para aplicar.")
+            else:
+                st.toast("ℹ️ No se escribió ningún valor — se conserva el actual.")
 
     with st.expander("🗄️ Base de datos Airtable", expanded=not airtable.is_configured()):
         st.markdown("Donde se guardan todos los autos aptos que encuentres.")
-        new_pat  = st.text_input("Personal Access Token (PAT)", value=airtable.pat or "", type="password", key="cfg_pat")
-        new_base = st.text_input("Base ID (ej. appXXXXXXXXXXXXXX)",   value=airtable.base_id or "", key="cfg_base")
+        _cfg_status(airtable.pat)
+        new_pat  = _secret_input("Personal Access Token (PAT)", airtable.pat, "cfg_pat")
+        new_base = st.text_input("Base ID (ej. appXXXXXXXXXXXXXX)",    value=airtable.base_id or "",    key="cfg_base")
         new_tbl  = st.text_input("ID de tabla (ej. tblXXXXXXXXXXXXXX)", value=airtable.table_name or "", key="cfg_tbl")
         if st.button("Guardar Airtable", key="save_at"):
-            save_env("AIRTABLE_PAT",        new_pat)
+            if new_pat:
+                save_env("AIRTABLE_PAT", new_pat)
             save_env("AIRTABLE_BASE_ID",    new_base)
             save_env("AIRTABLE_TABLE_NAME", new_tbl)
             st.toast("✅ Guardado. Recarga la página para aplicar.")
@@ -907,11 +960,13 @@ with tab_cfg:
 
     with st.expander("💬 Notificaciones Telegram"):
         st.markdown("Recibe un mensaje en Telegram cada vez que se detecte una buena oferta.")
-        new_tg_token = st.text_input("Bot Token", value=telegram_token or "", type="password", key="cfg_tg_t")
-        new_tg_chat  = st.text_input("Chat ID",   value=telegram_chat  or "", key="cfg_tg_c")
+        _cfg_status(telegram_token)
+        new_tg_token = _secret_input("Bot Token", telegram_token, "cfg_tg_t")
+        new_tg_chat  = st.text_input("Chat ID", value=telegram_chat or "", key="cfg_tg_c")
         if st.button("Guardar Telegram", key="save_tg"):
-            save_env("TELEGRAM_BOT_TOKEN", new_tg_token)
-            save_env("TELEGRAM_CHAT_ID",   new_tg_chat)
+            if new_tg_token:
+                save_env("TELEGRAM_BOT_TOKEN", new_tg_token)
+            save_env("TELEGRAM_CHAT_ID", new_tg_chat)
             st.toast("✅ Guardado. Recarga la página para aplicar.")
 
     with st.expander("📱 Notificaciones WhatsApp"):
@@ -923,19 +978,22 @@ with tab_cfg:
         2. Envíale este mensaje por WhatsApp: `I allow callmebot to send me messages`
         3. Recibirás tu API key de respuesta en segundos
         """)
+        _cfg_status(whatsapp.api_key)
         new_wa_phone  = st.text_input("Tu número de WhatsApp (con código de país, ej. +51999888777)",
                                       value=whatsapp.phone or "", key="cfg_wa_phone")
-        new_wa_key    = st.text_input("API Key de CallMeBot", value=whatsapp.api_key or "",
-                                      type="password", key="cfg_wa_key")
+        new_wa_key    = _secret_input("API Key de CallMeBot", whatsapp.api_key, "cfg_wa_key")
 
         col_save_wa, col_test_wa = st.columns(2)
         if col_save_wa.button("Guardar WhatsApp", key="save_wa"):
-            save_env("WHATSAPP_PHONE",  new_wa_phone)
-            save_env("WHATSAPP_APIKEY", new_wa_key)
+            save_env("WHATSAPP_PHONE", new_wa_phone)
+            if new_wa_key:
+                save_env("WHATSAPP_APIKEY", new_wa_key)
             st.toast("✅ Guardado. Recarga la página para aplicar.")
 
+        # For the test, use the new key if provided, otherwise fall back to stored key
+        effective_wa_key = new_wa_key or whatsapp.api_key or ""
         if col_test_wa.button("🧪 Enviar mensaje de prueba", key="test_wa"):
-            test_wa = WhatsAppTool(phone=new_wa_phone, api_key=new_wa_key)
+            test_wa = WhatsAppTool(phone=new_wa_phone, api_key=effective_wa_key)
             if test_wa.is_configured():
                 ok = test_wa.send("🚗 Anymotor: ¡Notificaciones de WhatsApp activadas correctamente!")
                 if ok:
