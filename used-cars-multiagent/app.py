@@ -32,6 +32,35 @@ from tools.whatsapp_tool import WhatsAppTool
 
 load_dotenv()
 
+# ─── Auth ──────────────────────────────────────────────────────────────────────
+_AUTH_USER = os.getenv("APP_USER")
+_AUTH_PASS = os.getenv("APP_PASSWORD")
+
+def _check_auth() -> bool:
+    return st.session_state.get("_authenticated") is True
+
+def _login_page():
+    st.set_page_config(page_title="Anymotor — Login", page_icon="🔐", layout="centered")
+    col = st.columns([1, 2, 1])[1]
+    with col:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.image("https://img.icons8.com/emoji/96/automobile-emoji.png", width=80)
+        st.title("Anymotor")
+        st.markdown("##### Ingresa tus credenciales para continuar")
+        st.markdown("---")
+        user = st.text_input("Usuario", placeholder="usuario")
+        pwd  = st.text_input("Contraseña", type="password", placeholder="••••••••")
+        if st.button("Entrar", use_container_width=True, type="primary"):
+            if user == _AUTH_USER and pwd == _AUTH_PASS:
+                st.session_state["_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Usuario o contraseña incorrectos.")
+
+if not _check_auth():
+    _login_page()
+    st.stop()
+
 # ─── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Anymotor",
@@ -176,6 +205,10 @@ st.markdown("""
 
 # ─── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
+    if st.button("🔒 Cerrar sesión", use_container_width=True):
+        st.session_state["_authenticated"] = False
+        st.rerun()
+    st.divider()
     st.markdown("#### ⚙️ Estado del sistema")
 
     def _dot(ok, label_ok, label_fail):
