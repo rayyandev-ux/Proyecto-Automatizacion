@@ -50,7 +50,7 @@ def _login_page():
         st.markdown("---")
         user = st.text_input("Usuario", placeholder="usuario")
         pwd  = st.text_input("Contraseña", type="password", placeholder="••••••••")
-        if st.button("Entrar", type="primary", use_container_width=True):
+        if st.button("Entrar", type="primary", width="stretch"):
             if user == _AUTH_USER and pwd == _AUTH_PASS:
                 st.session_state["_authenticated"] = True
                 st.rerun()
@@ -220,7 +220,7 @@ st.markdown("""
 
 # ─── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    if st.button("🔒 Cerrar sesión", use_container_width=True):
+    if st.button("🔒 Cerrar sesión", width="stretch"):
         st.session_state["_authenticated"] = False
         st.rerun()
     st.divider()
@@ -264,7 +264,7 @@ with st.sidebar:
     max_items = st.slider("Autos a revisar", 1, 10, 3, help="Aprox. 30s por auto")
     st.divider()
     search_btn = st.button("🔍 Buscar Ofertas Ahora", type="primary",
-                           use_container_width=True, disabled=not groq_key)
+                           width="stretch", disabled=not groq_key)
 
 # ─── Tabs ──────────────────────────────────────────────────────────────────────
 tab_search, tab_manual, tab_db, tab_dash, tab_cfg = st.tabs([
